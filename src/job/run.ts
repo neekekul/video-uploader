@@ -3,33 +3,63 @@ import path from "node:path";
 import { parseArchiveName } from "../archive/formats.js";
 import { errorMessage } from "../errors.js";
 import { ensureDropDirs } from "../paths.js";
+import { acquireDropLock } from "./lock.js";
 import { moveArchive } from "./move.js";
 import {
 	type ArchiveOutcome,
 	type JobContext,
 	processArchive,
 } from "./process-archive.js";
+import { createReadinessCheck, PlatformNotReadyError } from "./readiness.js";
 import { logPathFor, readLog, writeLog } from "./result-log.js";
 import { scanInbox } from "./stability.js";
 
 export interface RunSummary {
+	/** False when another instance held the drop-folder lock and nothing was done. */
+	ran: boolean;
 	results: { archive: string; outcome: ArchiveOutcome }[];
 	/** Archives left in inbox/ because they were still being copied or were locked. */
 	skipped: string[];
+	/** Set when a default platform wasn't ready, so the inbox was left untouched. */
+	blocked?: string;
 }
 
 /**
- * One pass over the inbox. Assumes it is the only process using the drop
- * folder: anything left in processing/ or work/ is treated as a crash leftover.
+ * One pass over the inbox, under an exclusive lock on the drop folder. Because
+ * the lock guarantees no other instance is running, anything left in
+ * processing/ or work/ is a crash leftover.
  */
 export async function runOnce(ctx: JobContext): Promise<RunSummary> {
-	const { paths, logger } = ctx;
+	const { paths, logger, config } = ctx;
 	await ensureDropDirs(paths);
+	const lock = await acquireDropLock(config.dropDir, ctx.lockOptions);
+	if (!lock.acquired) {
+		const by = lock.holder
+			? ` (held by pid ${lock.holder.pid} on ${lock.holder.host} since ${lock.holder.acquiredAt})`
+			: "";
+		logger.warn(
+			`Another instance is using the drop folder${by}; skipping this run`,
+		);
+		return { ran: false, results: [], skipped: [] };
+	}
+	if (lock.tookOverStale) {
+		logger.warn("Took over a stale lock left by an instance that stopped");
+	}
+	try {
+		return await processInbox(ctx);
+	} finally {
+		await lock.lock.release();
+	}
+}
+
+async function processInbox(ctx: JobContext): Promise<RunSummary> {
+	const { paths, logger } = ctx;
 	await recoverInterrupted(ctx);
 	await clearWorkDir(ctx);
 
 	const scan = await scanInbox(paths.inbox, ctx.config.stabilityWaitMs);
 	const summary: RunSummary = {
+		ran: true,
 		results: [],
 		skipped: scan.changing.map((f) => path.basename(f)),
 	};
@@ -40,6 +70,26 @@ export async function runOnce(ctx: JobContext): Promise<RunSummary> {
 		logger.info("No archives ready in inbox");
 		return summary;
 	}
+
+	// Check the default platforms before claiming anything, so an expired
+	// sign-in doesn't extract every archive just to put it back.
+	const checkReady = createReadinessCheck(logger);
+	for (const name of ctx.config.defaultPlatforms) {
+		const platform = ctx.platforms.get(name);
+		if (!platform) continue;
+		try {
+			await checkReady(platform);
+		} catch (error) {
+			if (!(error instanceof PlatformNotReadyError)) throw error;
+			logger.error(
+				`${error.message}. Leaving ${scan.ready.length} archive(s) in the inbox until this is fixed.`,
+			);
+			summary.skipped.push(...scan.ready.map((f) => path.basename(f)));
+			summary.blocked = error.message;
+			return summary;
+		}
+	}
+	const runCtx = { ...ctx, checkReady };
 
 	for (const inboxPath of scan.ready) {
 		const name = path.basename(inboxPath);
@@ -61,7 +111,7 @@ export async function runOnce(ctx: JobContext): Promise<RunSummary> {
 			// No log yet: first attempt.
 		}
 		try {
-			const outcome = await processArchive(claimed, ctx);
+			const outcome = await processArchive(claimed, runCtx);
 			summary.results.push({ archive: name, outcome });
 		} catch (error) {
 			// Only file-system failures (writing the log, moving the archive) reach here.
