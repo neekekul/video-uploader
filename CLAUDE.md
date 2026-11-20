@@ -25,10 +25,11 @@ Drop folder layout under `DROP_DIR`: `inbox/ → processing/ → done/ | failed/
 
 **Run** (`src/job/run.ts`, triggered by `src/scheduler.ts` via croner, which never overlaps runs):
 
-1. Recover crash leftovers. Archives still in `processing/` go back to `inbox/` (counted as an interrupted attempt), and `work/` is emptied. This assumes only one instance uses the drop folder.
-2. `scanInbox` samples each archive's size and mtime twice, `STABILITY_WAIT_SECONDS` apart, and skips files still being copied.
-3. Claim each ready archive by renaming it into `processing/`. A failed rename means the file is locked and is skipped.
-4. `processArchive` for each claimed archive, one at a time.
+1. Take the drop-folder lock (`src/job/lock.ts`, `DROP_DIR/.lock`), or skip the run if another instance holds it. Liveness is a heartbeat on the lock's mtime, not a PID check, because PIDs mean nothing across a container and the host. A lock untouched for 2 minutes is treated as stale and taken over. Signal handlers call `releaseHeldLocksSync()` so a quick restart doesn't skip its first run.
+2. Recover crash leftovers. Because the lock is held, anything in `processing/` was interrupted: it goes back to `inbox/` (counted as an attempt), and `work/` is emptied.
+3. `scanInbox` samples each archive's size and mtime twice, `STABILITY_WAIT_SECONDS` apart, and skips files still being copied.
+4. Claim each ready archive by renaming it into `processing/`. A failed rename means the file is locked and is skipped.
+5. `processArchive` for each claimed archive, one at a time.
 
 **processArchive** (`src/job/process-archive.ts`): extract, inspect (`src/archive/inspect.ts`), then load and validate metadata (`src/metadata/`). Next it builds the description (header, `description.txt`, footer from `CONFIG_DIR`) and resolves target platforms (`metadata.platforms`, falling back to the `PLATFORMS` env var). It runs every platform's `validate()` before any upload, uploads to each platform, then moves the archive. `work/<uuid>` is always deleted.
 

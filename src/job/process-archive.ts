@@ -11,6 +11,7 @@ import type { Logger } from "../logger.js";
 import { loadMetadata } from "../metadata/load.js";
 import type { DropPaths } from "../paths.js";
 import type { Platform, UploadJob } from "../platforms/types.js";
+import type { LockOptions } from "./lock.js";
 import { moveArchive } from "./move.js";
 import {
 	type AttemptRecord,
@@ -24,6 +25,8 @@ export interface JobContext {
 	paths: DropPaths;
 	platforms: Map<string, Platform>;
 	logger: Logger;
+	/** Overrides the drop-folder lock timings (used by tests). */
+	lockOptions?: LockOptions;
 }
 
 export type ArchiveOutcome = "done" | "retrying" | "failed";

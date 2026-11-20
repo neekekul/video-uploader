@@ -1,5 +1,6 @@
 import { loadConfig } from "./config.js";
 import { errorMessage } from "./errors.js";
+import { releaseHeldLocksSync } from "./job/lock.js";
 import type { JobContext } from "./job/process-archive.js";
 import { runOnce } from "./job/run.js";
 import { consoleLogger } from "./logger.js";
@@ -32,18 +33,20 @@ async function main(command: string): Promise<void> {
 		logger: consoleLogger,
 	};
 
+	// An archive mid-upload stays in processing/ and is recovered next run;
+	// the lock must go now so that run isn't skipped.
+	const shutdown = () => {
+		consoleLogger.info("Shutting down");
+		releaseHeldLocksSync();
+		process.exit(0);
+	};
+	process.on("SIGINT", shutdown);
+	process.on("SIGTERM", shutdown);
+
 	switch (command) {
-		case "start": {
-			const job = startScheduler(ctx);
-			const stop = () => {
-				consoleLogger.info("Shutting down");
-				job.stop();
-				process.exit(0);
-			};
-			process.on("SIGINT", stop);
-			process.on("SIGTERM", stop);
+		case "start":
+			startScheduler(ctx);
 			return;
-		}
 		case "run-once": {
 			const summary = await runOnce(ctx);
 			for (const { archive, outcome } of summary.results) {
