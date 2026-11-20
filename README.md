@@ -20,3 +20,25 @@ Limits to know about:
 - **Daily quota:** the default is 10,000 units per day. An upload costs about 1,600, so expect around 6 uploads a day. Archives that hit the quota are retried on the next run.
 - **Private-only uploads:** until the project passes Google's [API compliance audit](https://support.google.com/youtube/contact/yt_api_form), every video uploaded through the API is locked to private. The result log warns you when this happens.
 - **Custom thumbnails:** these need a phone-verified channel.
+
+## Running with Docker
+
+You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) running. Do the YouTube setup above first; the sign-in step (`npm run auth:youtube`) runs on your machine, not in the container.
+
+```sh
+npm run docker:up     # build the image and start it in the background
+npm run docker:logs   # follow the logs
+npm run docker:down   # stop it
+```
+
+The container restarts on its own, including after a reboot once Docker Desktop is running again. It mounts three folders from this project, which you can change in `.env`:
+
+| On your machine                             | In the container    | Purpose                                   |
+| ------------------------------------------- | ------------------- | ----------------------------------------- |
+| `DROP_DIR` (default `./drop`)               | `/data/drop`        | inbox, done, failed                       |
+| `CONFIG_DIR` (default `./config`)           | `/data/config`      | description header and footer (read-only) |
+| `CREDENTIALS_DIR` (default `./credentials`) | `/data/credentials` | YouTube client secret and token           |
+
+`SCHEDULE` is evaluated in UTC inside the container. Set `TZ` in `.env` (e.g. `TZ=America/Chicago`) to use your local time.
+
+**Adding archives:** copy each archive somewhere on the same drive first, then move it into `inbox`. A move within the same drive is instant, so the app never sees a half-copied file. If an archive is picked up mid-copy anyway, it fails to extract and is retried on the next run.

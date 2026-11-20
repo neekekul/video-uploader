@@ -1,0 +1,13 @@
+# Only package files and src/ are needed to build the image.
+# Drop folder, config and credentials are mounted at runtime, never baked in.
+.git
+node_modules
+dist
+coverage
+drop
+config
+credentials
+tests
+.env
+.env.*
+*.log

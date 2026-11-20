@@ -6,13 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A personal tool that watches a drop folder for archives (`.zip`, `.tar.gz`/`.tgz`), each holding one video plus optional description, metadata, thumbnail and captions, and uploads them on a schedule. YouTube is the first target, and the design allows several platforms per archive.
 
-Status: the core pipeline and the YouTube platform are done. Still planned: Docker (stage 3) and docs (stage 4). Google Cloud setup steps are in README.md.
+Status: the core pipeline, the YouTube platform and Docker packaging are done. Still planned: docs (stage 4). Google Cloud setup steps are in README.md.
 
 ## Commands
 
 - `npm run dev` runs the scheduler (`start`) with `tsx` in watch mode.
 - `npm run run-once` processes the inbox once and exits. This is the quickest way to try a change by hand. Set `PLATFORMS=dry-run` to skip real uploads.
-- `npm run auth:youtube` does the one-time browser sign-in and writes the refresh token.
+- `npm run auth:youtube` does the one-time browser sign-in and writes the refresh token. It runs on the host, never in the container.
+- `npm run docker:up` / `docker:logs` / `docker:down` wrap `docker compose`.
 - `npm run build` compiles `src/` to `dist/`. `npm start` runs the built scheduler.
 - `npm run typecheck` typechecks `src/` and `tests/` through `tsconfig.check.json`.
 - `npm run lint` runs Biome (lint and formatting). `npm run lint:fix` applies fixes.
@@ -42,7 +43,7 @@ Drop folder layout under `DROP_DIR`: `inbox/ → processing/ → done/ | failed/
 
 **Failure routing:**
 
-- `ValidationError` (`src/errors.ts`) is used for problems retrying can't fix, such as a bad archive, invalid metadata, an unknown platform or a failed platform `validate()`. These go straight to `failed/`.
+- `ValidationError` (`src/errors.ts`) is used for problems retrying can't fix, such as wrong archive contents, an unsafe entry path, invalid metadata, an unknown platform or a failed platform `validate()`. These go straight to `failed/`.
 - `PlatformNotReadyError` comes from a failed `preflight()` for a platform the archive's metadata selected. The archive goes back to `inbox/` as `waiting`, and `attemptsInRound` is decremented, so setup problems never push archives into `failed/`.
 - Any other error sends the archive back to `inbox/` for the next run, until attempts run out.
 
@@ -55,6 +56,10 @@ Drop folder layout under `DROP_DIR`: `inbox/ → processing/ → done/ | failed/
 - `resource.ts` turns a job into the insert request (privacy defaults to `private`, category to `22`) and checks YouTube's limits up front in `validateForYoutube`.
 - `errors.ts` turns gaxios errors (quota, `invalid_grant`, and so on) into one readable line.
 - `credentials.ts` and `auth-flow.ts` handle OAuth: a "Desktop app" client, a loopback redirect with PKCE and a state check, and the scopes `youtube.upload` + `youtube.force-ssl`. Credentials are only read when a run has work for YouTube, so `dry-run` works without them. The YouTube `preflight` exchanges the refresh token for an access token. That catches a missing, revoked or expired sign-in and costs no quota.
+
+**Docker** (`Dockerfile`, `compose.yaml`): a two-stage build on `node:26-slim` that runs as user `node`. The image sets `DROP_DIR`, `CONFIG_DIR` and the `YOUTUBE_*` paths to fixed `/data/...` locations. Compose reads `.env` only to fill in its `${...}` values; it doesn't pass the file into the container, because `.env` holds host paths. `init: true` forwards SIGTERM so the lock is released on `docker stop`.
+
+**Copy detection:** Windows gives a copied file its full size as soon as the copy starts, and a container can't see the host's file lock. The stability check therefore relies on mtime, and extraction failures are deliberately retryable. Only `safeJoin` rejections are permanent `ValidationError`s.
 
 **Extraction safety** (`src/archive/extract.ts`): every entry path goes through `safeJoin`, and tar links and device entries are dropped. The zip file handle is always closed, because an open handle blocks moving the archive on Windows. Errors thrown inside tar's `filter` callback escape its promise, so collect problems there and throw afterwards.
 
