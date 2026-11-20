@@ -1,29 +1,33 @@
 {
-  "name": "video-uploader",
-  "version": "1.0.0",
-  "description": "A project that for now is going to be design for my own local use case. It will automatically upload a Youtube video from an archive on a schedule.",
-  "main": "index.js",
-  "type": "module",
-  "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/neekekul/video-uploader.git"
-  },
-  "keywords": [],
-  "bugs": {
-    "url": "https://github.com/neekekul/video-uploader/issues"
-  },
-  "homepage": "https://github.com/neekekul/video-uploader#readme",
-  "devDependencies": {
-    "@biomejs/biome": "^2.6.8",
-    "@types/node": "^26.6.6",
-    "tsx": "^4.23.15",
-    "typescript": "^7.0.2",
-    "vitest": "^5.1.1"
-  }
+	"name": "video-uploader",
+	"version": "1.0.0",
+	"description": "A project that for now is going to be design for my own local use case. It will automatically upload a Youtube video from an archive on a schedule.",
+	"main": "index.js",
+	"type": "module",
+	"scripts": {
+		"dev": "tsx watch src/index.ts",
+		"build": "tsc",
+		"start": "node dist/index.js",
+		"typecheck": "tsc --noEmit",
+		"lint": "biome check .",
+		"lint:fix": "biome check --write .",
+		"test": "vitest run --passWithNoTests",
+		"test:watch": "vitest"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/neekekul/video-uploader.git"
+	},
+	"keywords": [],
+	"bugs": {
+		"url": "https://github.com/neekekul/video-uploader/issues"
+	},
+	"homepage": "https://github.com/neekekul/video-uploader#readme",
+	"devDependencies": {
+		"@biomejs/biome": "^2.6.8",
+		"@types/node": "^26.6.6",
+		"tsx": "^4.23.15",
+		"typescript": "^7.0.2",
+		"vitest": "^5.1.1"
+	}
 }
