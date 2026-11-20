@@ -1,4 +1,4 @@
-import { appendFile, readdir, readFile } from "node:fs/promises";
+import { appendFile, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { JobContext } from "../src/job/process-archive.js";
@@ -294,6 +294,32 @@ describe("runOnce", () => {
 			expect.stringMatching(/^clip-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z\.zip$/),
 			"clip.zip",
 		]);
+	});
+});
+
+describe("half-copied archives", () => {
+	it("retries an archive that was still being copied instead of failing it", async () => {
+		const platform = fakePlatform("fake");
+		const ctx = await makeContext([platform]);
+		await ensureDropDirs(ctx.paths);
+		const staging = await tempDir();
+		const complete = await readFile(
+			await makeZip(path.join(staging, "clip.zip"), {
+				"video.mp4": VIDEO.repeat(1000),
+			}),
+		);
+		// Windows sets the full size first, then fills in the data.
+		const partial = Buffer.alloc(complete.length);
+		complete.copy(partial, 0, 0, Math.floor(complete.length / 2));
+		const inboxFile = path.join(ctx.paths.inbox, "clip.zip");
+		await writeFile(inboxFile, partial);
+
+		expect((await runOnce(ctx)).results[0]?.outcome).toBe("retrying");
+		expect(platform.calls).toHaveLength(0);
+
+		await writeFile(inboxFile, complete); // the copy finishes
+		expect((await runOnce(ctx)).results[0]?.outcome).toBe("done");
+		expect(platform.calls).toHaveLength(1);
 	});
 });
 
