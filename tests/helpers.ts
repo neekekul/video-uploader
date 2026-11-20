@@ -71,12 +71,14 @@ export function fakePlatform(
 		id: `${name}-${call}`,
 	}),
 	validate: (job: UploadJob) => string[] | Promise<string[]> = () => [],
+	preflight?: () => Promise<void>,
 ): FakePlatform {
 	const calls: UploadJob[] = [];
 	return {
 		name,
 		calls,
 		validate,
+		...(preflight ? { preflight } : {}),
 		async upload(job) {
 			calls.push(job);
 			return behave(calls.length);

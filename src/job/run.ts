@@ -10,6 +10,7 @@ import {
 	type JobContext,
 	processArchive,
 } from "./process-archive.js";
+import { createReadinessCheck, PlatformNotReadyError } from "./readiness.js";
 import { logPathFor, readLog, writeLog } from "./result-log.js";
 import { scanInbox } from "./stability.js";
 
@@ -19,6 +20,8 @@ export interface RunSummary {
 	results: { archive: string; outcome: ArchiveOutcome }[];
 	/** Archives left in inbox/ because they were still being copied or were locked. */
 	skipped: string[];
+	/** Set when a default platform wasn't ready, so the inbox was left untouched. */
+	blocked?: string;
 }
 
 /**
@@ -68,6 +71,26 @@ async function processInbox(ctx: JobContext): Promise<RunSummary> {
 		return summary;
 	}
 
+	// Check the default platforms before claiming anything, so an expired
+	// sign-in doesn't extract every archive just to put it back.
+	const checkReady = createReadinessCheck(logger);
+	for (const name of ctx.config.defaultPlatforms) {
+		const platform = ctx.platforms.get(name);
+		if (!platform) continue;
+		try {
+			await checkReady(platform);
+		} catch (error) {
+			if (!(error instanceof PlatformNotReadyError)) throw error;
+			logger.error(
+				`${error.message}. Leaving ${scan.ready.length} archive(s) in the inbox until this is fixed.`,
+			);
+			summary.skipped.push(...scan.ready.map((f) => path.basename(f)));
+			summary.blocked = error.message;
+			return summary;
+		}
+	}
+	const runCtx = { ...ctx, checkReady };
+
 	for (const inboxPath of scan.ready) {
 		const name = path.basename(inboxPath);
 		const claimed = path.join(paths.processing, name);
@@ -88,7 +111,7 @@ async function processInbox(ctx: JobContext): Promise<RunSummary> {
 			// No log yet: first attempt.
 		}
 		try {
-			const outcome = await processArchive(claimed, ctx);
+			const outcome = await processArchive(claimed, runCtx);
 			summary.results.push({ archive: name, outcome });
 		} catch (error) {
 			// Only file-system failures (writing the log, moving the archive) reach here.

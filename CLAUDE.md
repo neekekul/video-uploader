@@ -29,8 +29,9 @@ Drop folder layout under `DROP_DIR`: `inbox/ → processing/ → done/ | failed/
 1. Take the drop-folder lock (`src/job/lock.ts`, `DROP_DIR/.lock`), or skip the run if another instance holds it. Liveness is a heartbeat on the lock's mtime, not a PID check, because PIDs mean nothing across a container and the host. A lock untouched for 2 minutes is treated as stale and taken over. Signal handlers call `releaseHeldLocksSync()` so a quick restart doesn't skip its first run.
 2. Recover crash leftovers. Because the lock is held, anything in `processing/` was interrupted: it goes back to `inbox/` (counted as an attempt), and `work/` is emptied.
 3. `scanInbox` samples each archive's size and mtime twice, `STABILITY_WAIT_SECONDS` apart, and skips files still being copied.
-4. Claim each ready archive by renaming it into `processing/`. A failed rename means the file is locked and is skipped.
-5. `processArchive` for each claimed archive, one at a time.
+4. If any archives are ready, run `preflight()` for each default platform (`src/job/readiness.ts`, at most once per platform per run). If one fails, the run stops and the inbox is left untouched: nothing is extracted, no log is written, and no attempt is used.
+5. Claim each ready archive by renaming it into `processing/`. A failed rename means the file is locked and is skipped.
+6. `processArchive` for each claimed archive, one at a time.
 
 **processArchive** (`src/job/process-archive.ts`): extract, inspect (`src/archive/inspect.ts`), then load and validate metadata (`src/metadata/`). Next it builds the description (header, `description.txt`, footer from `CONFIG_DIR`) and resolves target platforms (`metadata.platforms`, falling back to the `PLATFORMS` env var). It runs every platform's `validate()` before any upload, uploads to each platform, then moves the archive. `work/<uuid>` is always deleted.
 
@@ -42,9 +43,10 @@ Drop folder layout under `DROP_DIR`: `inbox/ → processing/ → done/ | failed/
 **Failure routing:**
 
 - `ValidationError` (`src/errors.ts`) is used for problems retrying can't fix, such as a bad archive, invalid metadata, an unknown platform or a failed platform `validate()`. These go straight to `failed/`.
+- `PlatformNotReadyError` comes from a failed `preflight()` for a platform the archive's metadata selected. The archive goes back to `inbox/` as `waiting`, and `attemptsInRound` is decremented, so setup problems never push archives into `failed/`.
 - Any other error sends the archive back to `inbox/` for the next run, until attempts run out.
 
-**Platforms** implement `Platform` (`src/platforms/types.ts`): `validate(job)` and `upload(job, logger)`. Register them in `src/platforms/registry.ts`. Platform-specific metadata goes in its own top-level section of the metadata schema. For example, `youtube:` is defined in `src/platforms/youtube/options.ts` and wired into `src/metadata/schema.ts`. All metadata objects are `strictObject`, so unknown keys (typos) fail validation.
+**Platforms** implement `Platform` (`src/platforms/types.ts`): `validate(job)`, `upload(job, logger)`, and an optional `preflight(logger)` readiness check. Register them in `src/platforms/registry.ts`. Platform-specific metadata goes in its own top-level section of the metadata schema. For example, `youtube:` is defined in `src/platforms/youtube/options.ts` and wired into `src/metadata/schema.ts`. All metadata objects are `strictObject`, so unknown keys (typos) fail validation.
 
 **YouTube** (`src/platforms/youtube/`):
 
@@ -52,7 +54,7 @@ Drop folder layout under `DROP_DIR`: `inbox/ → processing/ → done/ | failed/
 - `api.ts` is a narrow `YoutubeApi` interface over `@googleapis/youtube`, so tests pass a fake instead.
 - `resource.ts` turns a job into the insert request (privacy defaults to `private`, category to `22`) and checks YouTube's limits up front in `validateForYoutube`.
 - `errors.ts` turns gaxios errors (quota, `invalid_grant`, and so on) into one readable line.
-- `credentials.ts` and `auth-flow.ts` handle OAuth: a "Desktop app" client, a loopback redirect with PKCE and a state check, and the scopes `youtube.upload` + `youtube.force-ssl`. Credentials are only read when an upload starts, so `dry-run` works without them.
+- `credentials.ts` and `auth-flow.ts` handle OAuth: a "Desktop app" client, a loopback redirect with PKCE and a state check, and the scopes `youtube.upload` + `youtube.force-ssl`. Credentials are only read when a run has work for YouTube, so `dry-run` works without them. The YouTube `preflight` exchanges the refresh token for an access token. That catches a missing, revoked or expired sign-in and costs no quota.
 
 **Extraction safety** (`src/archive/extract.ts`): every entry path goes through `safeJoin`, and tar links and device entries are dropped. The zip file handle is always closed, because an open handle blocks moving the archive on Windows. Errors thrown inside tar's `filter` callback escape its promise, so collect problems there and throw afterwards.
 

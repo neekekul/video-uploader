@@ -15,11 +15,15 @@ const THUMBNAIL_FORBIDDEN_HINT =
 
 export type YoutubeApiFactory = (logger: Logger) => Promise<YoutubeApi>;
 
-export function createYoutubePlatform(getApi: YoutubeApiFactory): Platform {
+export function createYoutubePlatform(
+	getApi: YoutubeApiFactory,
+	preflight?: (logger: Logger) => Promise<void>,
+): Platform {
 	return {
 		name: "youtube",
 		validate: validateForYoutube,
 		upload: (job, logger) => uploadToYoutube(job, logger, getApi),
+		...(preflight ? { preflight } : {}),
 	};
 }
 
@@ -27,8 +31,19 @@ export function createYoutubePlatform(getApi: YoutubeApiFactory): Platform {
 export function createRealYoutubePlatform(
 	paths: YoutubeCredentialPaths,
 ): Platform {
-	return createYoutubePlatform(async (logger) =>
-		createYoutubeApi(await loadAuthorizedClient(paths, logger)),
+	return createYoutubePlatform(
+		async (logger) =>
+			createYoutubeApi(await loadAuthorizedClient(paths, logger)),
+		async (logger) => {
+			// Exchanging the refresh token for an access token fails fast on a
+			// missing, revoked or expired sign-in, and costs no API quota.
+			try {
+				const client = await loadAuthorizedClient(paths, logger);
+				await client.getAccessToken();
+			} catch (error) {
+				throw new Error(describeYoutubeError(error));
+			}
+		},
 	);
 }
 

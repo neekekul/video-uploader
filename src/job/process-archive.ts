@@ -14,6 +14,11 @@ import type { Platform, UploadJob } from "../platforms/types.js";
 import type { LockOptions } from "./lock.js";
 import { moveArchive } from "./move.js";
 import {
+	createReadinessCheck,
+	PlatformNotReadyError,
+	type ReadinessCheck,
+} from "./readiness.js";
+import {
 	type AttemptRecord,
 	type ResultLog,
 	readLog,
@@ -27,9 +32,11 @@ export interface JobContext {
 	logger: Logger;
 	/** Overrides the drop-folder lock timings (used by tests). */
 	lockOptions?: LockOptions;
+	/** Shared across one run so each platform's preflight runs once. */
+	checkReady?: ReadinessCheck;
 }
 
-export type ArchiveOutcome = "done" | "retrying" | "failed";
+export type ArchiveOutcome = "done" | "retrying" | "waiting" | "failed";
 
 /**
  * Runs one archive that has already been claimed into processing/:
@@ -103,6 +110,11 @@ export async function processArchive(
 		).flat();
 		if (problems.length > 0) throw new ValidationError(problems);
 
+		const checkReady = ctx.checkReady ?? createReadinessCheck(logger);
+		for (const target of targets) {
+			if (!log.uploaded[target.name]) await checkReady(target);
+		}
+
 		await uploadToPlatforms(job, targets, log, attempt, archivePath, logger);
 	} catch (error) {
 		failure = error;
@@ -121,6 +133,13 @@ export async function processArchive(
 		attempt.outcome = "success";
 		outcome = "done";
 		destDir = paths.done;
+	} else if (failure instanceof PlatformNotReadyError) {
+		attempt.outcome = "deferred";
+		attempt.error = failure.message;
+		log.attemptsInRound -= 1;
+		outcome = "waiting";
+		destDir = paths.inbox;
+		logger.warn(`${fileName}: ${failure.message}; it will wait in the inbox`);
 	} else {
 		attempt.outcome = "failure";
 		attempt.error = errorMessage(failure);

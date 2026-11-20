@@ -3,9 +3,16 @@ import { readFile, writeFile } from "node:fs/promises";
 /**
  * - processing: a job is working on it (or crashed while doing so)
  * - retrying:   failed, back in inbox/ for another attempt on the next run
+ * - waiting:    a platform wasn't ready (e.g. expired sign-in); back in inbox/
+ *               without using an attempt
  * - done / failed: final
  */
-export type JobStatus = "processing" | "retrying" | "done" | "failed";
+export type JobStatus =
+	| "processing"
+	| "retrying"
+	| "waiting"
+	| "done"
+	| "failed";
 
 export type PlatformAttemptResult =
 	| { status: "success"; id: string; url?: string }
@@ -18,7 +25,8 @@ export interface AttemptRecord {
 	startedAt: string;
 	/** Missing if the app stopped mid-attempt. */
 	finishedAt?: string;
-	outcome?: "success" | "failure" | "interrupted";
+	/** "deferred" means a platform wasn't ready; it doesn't count as an attempt. */
+	outcome?: "success" | "failure" | "interrupted" | "deferred";
 	title?: string;
 	error?: string;
 	warnings: string[];
