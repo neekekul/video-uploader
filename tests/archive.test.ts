@@ -92,12 +92,17 @@ describe("extractArchive", () => {
 		await expect(access(path.join(dir, "deep", "evil.txt"))).rejects.toThrow();
 	});
 
-	it("reports a corrupt archive as a validation error", async () => {
+	it("reports an unreadable archive as a retryable error", async () => {
 		const dir = await tempDir();
 		await writeFiles(dir, { "bad.zip": "not a zip" });
-		await expect(
-			extractArchive(path.join(dir, "bad.zip"), "zip", path.join(dir, "out")),
-		).rejects.toThrow(ValidationError);
+		const error = await extractArchive(
+			path.join(dir, "bad.zip"),
+			"zip",
+			path.join(dir, "out"),
+		).catch((e: unknown) => e);
+		expect(error).toBeInstanceOf(Error);
+		expect(error).not.toBeInstanceOf(ValidationError);
+		expect((error as Error).message).toContain("will be retried");
 	});
 });
 

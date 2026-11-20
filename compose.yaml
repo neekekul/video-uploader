@@ -1,0 +1,32 @@
+# Usage: docker compose up -d --build
+#
+# Compose reads .env in this folder for the ${...} values below, so the same
+# .env works for running locally and in the container. Inside the container
+# the folders are always mounted at /data/...; the image sets those paths.
+
+services:
+  video-uploader:
+    build: .
+    image: video-uploader
+    restart: unless-stopped
+    # Forwards docker stop's SIGTERM so the app releases its drop-folder lock.
+    init: true
+    stop_grace_period: 30s
+    environment:
+      SCHEDULE: ${SCHEDULE:-0 */2 * * *}
+      RUN_ON_START: ${RUN_ON_START:-true}
+      STABILITY_WAIT_SECONDS: ${STABILITY_WAIT_SECONDS:-10}
+      MAX_ATTEMPTS: ${MAX_ATTEMPTS:-2}
+      PLATFORMS: ${PLATFORMS:-youtube}
+      # Time zone for SCHEDULE, e.g. America/Chicago. Log timestamps stay UTC.
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ${DROP_DIR:-./drop}:/data/drop
+      - ${CONFIG_DIR:-./config}:/data/config:ro
+      # Read-write: refreshed tokens are saved back here.
+      - ${CREDENTIALS_DIR:-./credentials}:/data/credentials
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

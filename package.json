@@ -14,7 +14,10 @@
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
 		"test": "vitest run --passWithNoTests",
-		"test:watch": "vitest"
+		"test:watch": "vitest",
+		"docker:up": "docker compose up -d --build",
+		"docker:logs": "docker compose logs -f",
+		"docker:down": "docker compose down"
 	},
 	"repository": {
 		"type": "git",

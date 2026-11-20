@@ -42,11 +42,16 @@ export async function extractArchive(
 			await extractTarGz(file, dest);
 		}
 	} catch (error) {
+		// Unsafe entries are permanent failures.
 		if (error instanceof ValidationError) throw error;
-		// A corrupt or malicious archive will never extract, so don't retry it.
-		throw new ValidationError([
-			`Could not extract archive: ${errorMessage(error)}`,
-		]);
+		// Anything else is retryable: the archive may simply not have finished
+		// copying. Windows sets the full file size the moment a copy starts, and
+		// inside a container the host's file lock isn't visible, so a half-copied
+		// archive can slip past the stability check. A truly corrupt archive fails
+		// again on the retry and then goes to failed/.
+		throw new Error(
+			`Could not extract archive (it may still have been copying; it will be retried): ${errorMessage(error)}`,
+		);
 	}
 }
 
