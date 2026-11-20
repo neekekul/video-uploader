@@ -12,6 +12,7 @@ interface GoogleErrorShape {
 	};
 }
 
+/** Hints prepended to Google's own message for well-known error reasons. */
 const REASONS: Record<string, string> = {
 	quotaExceeded:
 		"YouTube API daily quota is used up (it resets at midnight Pacific time)",
@@ -19,11 +20,17 @@ const REASONS: Record<string, string> = {
 		"YouTube API daily quota is used up (it resets at midnight Pacific time)",
 	uploadLimitExceeded: "This channel has hit YouTube's upload limit for now",
 	youtubeSignupRequired: "The authorized Google account has no YouTube channel",
-	forbidden: "YouTube refused the request (check the channel's permissions)",
 };
 
-/** Turns a googleapis/gaxios error into one readable line for the result log. */
-export function describeYoutubeError(error: unknown): string {
+/**
+ * Turns a googleapis/gaxios error into one readable line for the result log:
+ * an optional hint, then Google's own message, then status and reason.
+ * `hints` adds call-specific explanations (e.g. what "forbidden" means for thumbnails).
+ */
+export function describeYoutubeError(
+	error: unknown,
+	hints: Record<string, string> = {},
+): string {
 	const e = error as GoogleErrorShape;
 	const data = e?.response?.data;
 	const status = e?.response?.status ?? e?.status;
@@ -39,10 +46,14 @@ export function describeYoutubeError(error: unknown): string {
 
 	const apiError = typeof data?.error === "object" ? data.error : undefined;
 	const reason = apiError?.errors?.[0]?.reason;
-	const known = reason ? REASONS[reason] : undefined;
-	if (known) return `${known} [${reason}]`;
-
+	const hint = reason ? (hints[reason] ?? REASONS[reason]) : undefined;
 	const message = apiError?.message ?? errorMessage(error);
-	const prefix = [status, reason].filter(Boolean).join(" ");
-	return prefix ? `${prefix}: ${message}` : message;
+	const code = [status, reason].filter(Boolean).join(" ");
+	return [
+		hint ? `${hint}.` : undefined,
+		message,
+		code ? `[${code}]` : undefined,
+	]
+		.filter(Boolean)
+		.join(" ");
 }

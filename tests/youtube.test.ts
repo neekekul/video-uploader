@@ -253,7 +253,7 @@ describe("youtube platform upload", () => {
 
 		expect(result.id).toBe("abc123");
 		expect(result.warnings).toEqual([
-			expect.stringContaining("thumbnail failed: YouTube refused the request"),
+			"thumbnail failed: Custom thumbnails need a verified channel: verify with a phone number at https://www.youtube.com/verify, then set this video's thumbnail in YouTube Studio. forbidden [403 forbidden]",
 		]);
 		expect(api.calls).toContain("playlist PL1 abc123");
 	});
@@ -292,10 +292,20 @@ describe("describeYoutubeError", () => {
 		expect(describeYoutubeError(error)).toContain("npm run auth:youtube");
 	});
 
+	it("keeps Google's message after a known hint", () => {
+		expect(
+			describeYoutubeError(
+				googleError(403, "quotaExceeded", "The request cannot be completed."),
+			),
+		).toBe(
+			"YouTube API daily quota is used up (it resets at midnight Pacific time). The request cannot be completed. [403 quotaExceeded]",
+		);
+	});
+
 	it("falls back to status, reason and message", () => {
 		expect(
 			describeYoutubeError(googleError(400, "invalidTitle", "Bad title")),
-		).toBe("400 invalidTitle: Bad title");
+		).toBe("Bad title [400 invalidTitle]");
 		expect(describeYoutubeError(new Error("socket hang up"))).toBe(
 			"socket hang up",
 		);

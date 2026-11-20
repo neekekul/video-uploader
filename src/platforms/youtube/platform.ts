@@ -9,6 +9,10 @@ import {
 import { describeYoutubeError } from "./errors.js";
 import { buildInsertParams, validateForYoutube } from "./resource.js";
 
+const THUMBNAIL_FORBIDDEN_HINT =
+	"Custom thumbnails need a verified channel: verify with a phone number at " +
+	"https://www.youtube.com/verify, then set this video's thumbnail in YouTube Studio";
+
 export type YoutubeApiFactory = (logger: Logger) => Promise<YoutubeApi>;
 
 export function createYoutubePlatform(getApi: YoutubeApiFactory): Platform {
@@ -51,11 +55,15 @@ async function uploadToYoutube(
 	// The video exists from here on. Later steps must not throw, or a retry
 	// would upload it a second time, so their failures become warnings.
 	const warnings: string[] = [];
-	const step = async (label: string, run: () => Promise<void>) => {
+	const step = async (
+		label: string,
+		run: () => Promise<void>,
+		hints?: Record<string, string>,
+	) => {
 		try {
 			await run();
 		} catch (error) {
-			const message = `${label} failed: ${describeYoutubeError(error)}`;
+			const message = `${label} failed: ${describeYoutubeError(error, hints)}`;
 			logger.warn(`[youtube] ${message}`);
 			warnings.push(message);
 		}
@@ -76,7 +84,9 @@ async function uploadToYoutube(
 			path.extname(thumbnail).toLowerCase() === ".png"
 				? "image/png"
 				: "image/jpeg";
-		await step("thumbnail", () => api.setThumbnail(id, thumbnail, mimeType));
+		await step("thumbnail", () => api.setThumbnail(id, thumbnail, mimeType), {
+			forbidden: THUMBNAIL_FORBIDDEN_HINT,
+		});
 	}
 	for (const caption of job.captions) {
 		await step(`${caption.language} captions`, () =>
