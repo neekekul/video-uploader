@@ -8,7 +8,15 @@ const envSchema = z.object({
 	RUN_ON_START: z.enum(["true", "false"]).default("true"),
 	STABILITY_WAIT_SECONDS: z.coerce.number().min(0).default(10),
 	MAX_ATTEMPTS: z.coerce.number().int().min(1).default(2),
-	PLATFORMS: z.string().min(1).default("dry-run"),
+	PLATFORMS: z.string().min(1).default("youtube"),
+	YOUTUBE_CLIENT_SECRET_FILE: z
+		.string()
+		.min(1)
+		.default("./credentials/youtube-client-secret.json"),
+	YOUTUBE_TOKEN_FILE: z
+		.string()
+		.min(1)
+		.default("./credentials/youtube-token.json"),
 });
 
 export interface Config {
@@ -25,6 +33,12 @@ export interface Config {
 	maxAttempts: number;
 	/** Platforms used when an archive's metadata does not list any. */
 	defaultPlatforms: string[];
+	youtube: {
+		/** OAuth "Desktop app" client JSON downloaded from Google Cloud Console. */
+		clientSecretFile: string;
+		/** Refresh token written by `auth youtube`. */
+		tokenFile: string;
+	};
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -43,5 +57,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 		defaultPlatforms: e.PLATFORMS.split(",")
 			.map((p) => p.trim())
 			.filter(Boolean),
+		youtube: {
+			clientSecretFile: path.resolve(e.YOUTUBE_CLIENT_SECRET_FILE),
+			tokenFile: path.resolve(e.YOUTUBE_TOKEN_FILE),
+		},
 	};
 }

@@ -6,13 +6,16 @@ import { runOnce } from "./job/run.js";
 import { consoleLogger } from "./logger.js";
 import { dropPaths } from "./paths.js";
 import { createPlatforms } from "./platforms/registry.js";
+import { runYoutubeAuthFlow } from "./platforms/youtube/auth-flow.js";
 import { startScheduler } from "./scheduler.js";
 
 const USAGE = `Usage: video-uploader <command>
 
 Commands:
   start      Run on the configured schedule (default)
-  run-once   Process the inbox once and exit`;
+  run-once   Process the inbox once and exit
+  auth youtube
+             Sign in to YouTube once and save the refresh token`;
 
 /** Loads ./.env if present. Variables already set in the environment win. */
 function loadEnvFile(): void {
@@ -23,13 +26,13 @@ function loadEnvFile(): void {
 	}
 }
 
-async function main(command: string): Promise<void> {
+async function main(command: string, args: string[]): Promise<void> {
 	loadEnvFile();
 	const config = loadConfig();
 	const ctx: JobContext = {
 		config,
 		paths: dropPaths(config.dropDir),
-		platforms: createPlatforms(),
+		platforms: createPlatforms(config),
 		logger: consoleLogger,
 	};
 
@@ -54,13 +57,23 @@ async function main(command: string): Promise<void> {
 			}
 			return;
 		}
+		case "auth":
+			if (args[0] === "youtube") {
+				await runYoutubeAuthFlow(config.youtube, consoleLogger);
+				return;
+			}
+			console.error(USAGE);
+			process.exitCode = 1;
+			return;
 		default:
 			console.error(USAGE);
 			process.exitCode = 1;
 	}
 }
 
-main(process.argv[2] ?? "start").catch((error: unknown) => {
-	consoleLogger.error(errorMessage(error));
-	process.exitCode = 1;
-});
+main(process.argv[2] ?? "start", process.argv.slice(3)).catch(
+	(error: unknown) => {
+		consoleLogger.error(errorMessage(error));
+		process.exitCode = 1;
+	},
+);

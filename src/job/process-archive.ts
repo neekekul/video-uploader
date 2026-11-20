@@ -94,9 +94,13 @@ export async function processArchive(
 			metadata.platforms ?? config.defaultPlatforms,
 			ctx.platforms,
 		);
-		const problems = targets.flatMap((p) =>
-			p.validate(job).map((msg) => `${p.name}: ${msg}`),
-		);
+		const problems = (
+			await Promise.all(
+				targets.map(async (p) =>
+					(await p.validate(job)).map((msg) => `${p.name}: ${msg}`),
+				),
+			)
+		).flat();
 		if (problems.length > 0) throw new ValidationError(problems);
 
 		await uploadToPlatforms(job, targets, log, attempt, archivePath, logger);

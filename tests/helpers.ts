@@ -70,7 +70,7 @@ export function fakePlatform(
 	behave: (call: number) => UploadResult = (call) => ({
 		id: `${name}-${call}`,
 	}),
-	validate: (job: UploadJob) => string[] = () => [],
+	validate: (job: UploadJob) => string[] | Promise<string[]> = () => [],
 ): FakePlatform {
 	const calls: UploadJob[] = [];
 	return {
@@ -97,6 +97,10 @@ export async function makeContext(
 		stabilityWaitMs: 0,
 		maxAttempts: 2,
 		defaultPlatforms: platforms.map((p) => p.name),
+		youtube: {
+			clientSecretFile: path.join(root, "credentials", "client.json"),
+			tokenFile: path.join(root, "credentials", "token.json"),
+		},
 		...overrides,
 	};
 	await mkdir(config.configDir, { recursive: true });

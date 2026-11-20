@@ -160,3 +160,6 @@ vite.config.ts.timestamp-*
 /drop/
 /config/description-header.txt
 /config/description-footer.txt
+
+# OAuth client secret and refresh token
+/credentials/

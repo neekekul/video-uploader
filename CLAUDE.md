@@ -6,18 +6,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A personal tool that watches a drop folder for archives (`.zip`, `.tar.gz`/`.tgz`), each holding one video plus optional description, metadata, thumbnail and captions, and uploads them on a schedule. YouTube is the first target, and the design allows several platforms per archive.
 
-Status: the core pipeline is done and runs with the `dry-run` platform. Still planned: the YouTube platform and `auth youtube` command (stage 2), then Docker (stage 3).
+Status: the core pipeline and the YouTube platform are done. Still planned: Docker (stage 3) and docs (stage 4). Google Cloud setup steps are in README.md.
 
 ## Commands
 
 - `npm run dev` runs the scheduler (`start`) with `tsx` in watch mode.
-- `npm run run-once` processes the inbox once and exits. This is the quickest way to try a change by hand.
+- `npm run run-once` processes the inbox once and exits. This is the quickest way to try a change by hand. Set `PLATFORMS=dry-run` to skip real uploads.
+- `npm run auth:youtube` does the one-time browser sign-in and writes the refresh token.
 - `npm run build` compiles `src/` to `dist/`. `npm start` runs the built scheduler.
 - `npm run typecheck` typechecks `src/` and `tests/` through `tsconfig.check.json`.
 - `npm run lint` runs Biome (lint and formatting). `npm run lint:fix` applies fixes.
 - `npm test` runs Vitest once. For one file, use `npm test -- tests/run.test.ts`. To filter by test name, use `npm test -- -t "retries"`.
 
-Configuration comes from environment variables, optionally loaded from `.env`. See `.env.example`. `PLATFORMS` defaults to `dry-run`.
+Configuration comes from environment variables, optionally loaded from `.env`. See `.env.example`. `PLATFORMS` defaults to `youtube`. YouTube credentials live in `credentials/`, which is gitignored.
 
 ## Architecture
 
@@ -45,6 +46,14 @@ Drop folder layout under `DROP_DIR`: `inbox/ → processing/ → done/ | failed/
 
 **Platforms** implement `Platform` (`src/platforms/types.ts`): `validate(job)` and `upload(job, logger)`. Register them in `src/platforms/registry.ts`. Platform-specific metadata goes in its own top-level section of the metadata schema. For example, `youtube:` is defined in `src/platforms/youtube/options.ts` and wired into `src/metadata/schema.ts`. All metadata objects are `strictObject`, so unknown keys (typos) fail validation.
 
+**YouTube** (`src/platforms/youtube/`):
+
+- `platform.ts` runs `videos.insert`, then sets the thumbnail, uploads captions and adds the video to playlists. **Once the insert succeeds, nothing may throw.** Failures in the later steps become `UploadResult.warnings`, because a thrown error would make the retry upload the video a second time.
+- `api.ts` is a narrow `YoutubeApi` interface over `@googleapis/youtube`, so tests pass a fake instead.
+- `resource.ts` turns a job into the insert request (privacy defaults to `private`, category to `22`) and checks YouTube's limits up front in `validateForYoutube`.
+- `errors.ts` turns gaxios errors (quota, `invalid_grant`, and so on) into one readable line.
+- `credentials.ts` and `auth-flow.ts` handle OAuth: a "Desktop app" client, a loopback redirect with PKCE and a state check, and the scopes `youtube.upload` + `youtube.force-ssl`. Credentials are only read when an upload starts, so `dry-run` works without them.
+
 **Extraction safety** (`src/archive/extract.ts`): every entry path goes through `safeJoin`, and tar links and device entries are dropped. The zip file handle is always closed, because an open handle blocks moving the archive on Windows. Errors thrown inside tar's `filter` callback escape its promise, so collect problems there and throw afterwards.
 
 ## Testing
@@ -58,5 +67,5 @@ Tests (`tests/`) build real zip and tar.gz archives in temp dirs (`tests/helpers
 - Strict TS, plus `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes`. Don't assign `undefined` to optional properties. Either add the key conditionally or type the property as `?: T | undefined`.
 - `tsconfig.json` builds only `src/`. `tsconfig.check.json` adds `tests/` for typechecking.
 - Biome uses tabs, double quotes and an 80-column line width.
-- The Write and Edit tools turn `﻿` escapes into a literal invisible BOM character. Check the bytes (`od -c`) after editing code that contains one.
-- `.env`, `/drop/` and the real `config/description-*.txt` files are gitignored. Commit the `.example` versions only.
+- The Write and Edit tools turn a BOM escape sequence (backslash, `u`, `FEFF`) into the literal invisible character. After editing code that contains one, check the bytes with `od -c`, and fix it with a script that builds the escape via `String.fromCharCode(92)`.
+- `.env`, `/drop/`, `/credentials/` and the real `config/description-*.txt` files are gitignored. Commit the `.example` versions only.

@@ -29,6 +29,6 @@ export interface Platform {
 	 * Checks the job against platform limits before anything is uploaded.
 	 * Returns a list of problems; empty means valid.
 	 */
-	validate(job: UploadJob): string[];
+	validate(job: UploadJob): string[] | Promise<string[]>;
 	upload(job: UploadJob, logger: Logger): Promise<UploadResult>;
 }
