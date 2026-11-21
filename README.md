@@ -17,7 +17,7 @@ You only need to do this once. Google renames its console menus from time to tim
 
 Limits to know about:
 
-- **Daily quota:** the default is 10,000 units per day. An upload costs about 1,600, so expect around 6 uploads a day. Archives that hit the quota are retried on the next run.
+- **Daily quota:** the default is 10,000 units per day. An upload costs about 1,600, plus 400 per caption track and 50 each for a thumbnail or playlist, so expect around 6 uploads a day. Archives that hit the quota are retried on the next run.
 - **Private-only uploads:** until the project passes Google's [API compliance audit](https://support.google.com/youtube/contact/yt_api_form), every video uploaded through the API is locked to private. The result log warns you when this happens.
 - **Custom thumbnails:** these need a phone-verified channel.
 
@@ -87,6 +87,24 @@ YouTube's rules for chapters:
 - Each timestamp starts its own line, followed by the chapter title.
 
 If the segments don't appear, check the video in YouTube Studio. Some videos aren't eligible for chapters, for example videos made for kids.
+
+### Captions
+
+Add one subtitle file per language, in SubRip (`.srt`) or WebVTT (`.vtt`) format. Name each file after its language tag, and the uploader adds it to the video as a caption track in that language:
+
+```text
+my-video.zip
+├── video.mp4
+├── en.srt        English
+├── es.vtt        Spanish
+└── pt-BR.srt     Portuguese (Brazil)
+```
+
+- **Naming:** use a 2–3 letter language code, optionally followed by a region or script, such as `en`, `de`, `fil`, `en-GB`, `pt-BR` or `zh-Hant`. A file named anything else (`captions.srt`, `english.srt`) sends the archive to `failed/` before anything is uploaded.
+- **One file per language:** `en.srt` and `en.vtt` in the same archive is an error.
+- **No metadata needed:** the language comes from the file name, and the tracks are published together with the video. Each track gets no name of its own, so viewers just see the language in the captions menu.
+- **Quota:** each caption track costs 400 quota units on top of the video's 1,600, so a video with two tracks uses 2,400 of the 10,000 daily units.
+- **Failures don't repeat the upload:** captions are added after the video. If YouTube rejects a file, for example because of a broken timestamp, the video stays uploaded and the problem appears under `warnings` in the result log. Add the captions by hand in YouTube Studio in that case.
 
 ### Metadata file
 
