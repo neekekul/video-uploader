@@ -1,0 +1,25 @@
+title: Building a Board From Scratch
+tags: [electronics, tutorial, soldering]
+platforms: [youtube]
+description:
+  includeHeader: true
+  includeFooter: false
+
+youtube:
+  privacy: private
+  publishAt: 2026-12-01T17:00:00-06:00
+  categoryId: 28
+  madeForKids: false
+  containsSyntheticMedia: false
+  notifySubscribers: true
+  embeddable: true
+  publicStatsViewable: true
+  license: youtube
+  defaultLanguage: en
+  defaultAudioLanguage: en
+  recordingDate: 2026-11-15
+  playlists: [PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx]
+  localizations:
+    es:
+      title: Construyendo una placa desde cero
+      description: Un recorrido rápido por la construcción de la placa.
